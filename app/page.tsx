@@ -1,22 +1,133 @@
-Awesome job getting the Vercel deployment and database connection working! That is a huge milestone.
-
-Now, let's load up your application with the **complete dataset** from your markdown file. I have meticulously parsed every single problem from Phase 3 through Phase 11, including the SDE tags, the specific dates, and the custom titles.
-
-Since you requested checkboxes for "completed" and "revise", I have kept the highly intuitive 🟢 (Solved), 🟡 (Hint), and 🔴 (Revisit) toggle buttons. They function exactly like checkboxes connected to your database, but they are much faster to click and scan visually when you are grinding through 400+ problems.
-
-### Update Your Code
-
-1. Go back to GitHub and open `app/page.tsx`.
-2. Click the **pencil icon** ✏️ to edit.
-3. **Delete everything** and replace it with this massive, complete file.
-4. Click **Commit changes**. Vercel will automatically redeploy it in about 30 seconds.
-
-```tsx
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 
-// The Complete Striver A2Z Dataset (Phase 3 to 11)
-const dataset: Record<string, any[]> = {
+type Problem = { id: string; title: string; sde: boolean; day: string };
+
+const revisionNotes: Record<string, string> = {
+  "Fri, Jun 5": "🔁 Revision (1h): DP Intro — Fibonacci, Climbing Stairs, Frog Jump (re-derive recurrences)",
+  "Sat, Jun 6": "🔁 Revision (3h): Full DP recap — House Robber, Grid DP, Subset Sum, 0/1 Knapsack, Coin Change (re-solve 3 weakest)",
+  "Sun, Jun 7": "🔁 Revision (3h): DP Strings + Stocks + LIS — re-solve LCS, Edit Distance, Best Time IV, LIS optimal",
+  "Mon, Jun 8": "🔁 Revision (1h): DP on Stocks (Buy/Sell I–IV) — re-derive states",
+  "Tue, Jun 9": "🔁 Revision (1h): DP on LIS — print LIS, longest bitonic, longest string chain",
+  "Wed, Jun 10": "🔁 Revision (1h): MCM / Partition DP — re-solve Burst Balloons + Palindrome Part II",
+  "Thu, Jun 11": "🔁 Revision (1h): DP on Squares + Egg Drop + Job Scheduling",
+  "Fri, Jun 12": "🔁 Revision (1h): Tries — re-implement Trie I + XOR Max + Distinct Substrings",
+  "Sat, Jun 13": "🔁 Revision (3h): Graph BFS/DFS — re-solve Islands, Rotten Oranges, Bipartite, Topo Sort",
+  "Sun, Jun 14": "🔁 Revision (3h): Shortest Path — Dijkstra, Bellman-Ford, Floyd Warshall, Cheapest Flights",
+  "Mon, Jun 15": "🔁 Revision (1h): MST + DSU — Prim, Kruskal, Network Connected, Accounts Merge",
+  "Tue, Jun 16": "🔁 Revision (1h): Graph Hard — Bridges, Articulation Points, Kosaraju",
+  "Wed, Jun 17": "🔁 Revision (1h): Graph traversal — Word Ladder I/II, Number of Distinct Islands",
+  "Thu, Jun 18": "🔁 Revision (1h): BT Traversals — pre/in/post (rec + iter) + Morris",
+  "Fri, Jun 19": "🔁 Revision (1h): BT Medium — LCA, Diameter, Max Path Sum, Boundary",
+  "Sat, Jun 20": "🔁 Revision (3h): BT Hard — Serialize/Deserialize, Flatten, Construct BT (Pre+In, Post+In)",
+  "Sun, Jun 21": "🔁 Revision (3h): BST — Validate, LCA, Kth Smallest, BST Iterator, Largest BST in BT",
+  "Mon, Jun 22": "🔁 Revision (1h): Adv Strings — KMP, Z-algo, Rabin-Karp templates",
+  "Tue, Jun 23": "🔁 Revision (1h): Stack basics — Implement Stack/Queue Arrays + LL + Balanced Parens",
+  "Wed, Jun 24": "🔁 Revision (1h): Expression conversions (all 6) — drill once",
+  "Thu, Jun 25": "🔁 Revision (1h): NGE family — re-solve NGE I/II + Next Smaller + Trapping Rain Water",
+  "Fri, Jun 26": "🔁 Revision (1h): Stack hard — Stock Span, Asteroid, Largest Rect Histogram",
+  "Sat, Jun 27": "🔁 Revision (3h): Stack Hard + Cache — Largest Rect, Sliding Window Max, LRU, LFU",
+  "Sun, Jun 28": "🔁 Revision (3h): BT + BST full sweep — re-solve 5 weakest from views/LCA/BST iterator",
+  "Mon, Jun 29": "🔁 Revision (1h): Heaps medium — Kth Largest, Sort K Sorted, Merge K Sorted",
+  "Tue, Jun 30": "🔁 Revision (1h): Heaps hard — Median Stream, Top K Freq, Task Scheduler",
+  "Wed, Jul 1": "🔁 Revision (1h): Recursion patterns — pick/not-pick, subset generation",
+  "Thu, Jul 2": "🔁 Revision (1h): Combination Sum I/II/III, Subset Sum I/II",
+  "Fri, Jul 3": "🔁 Revision (1h): Backtracking templates — N-Queens, Sudoku, Permutations",
+  "Sat, Jul 4": "🔁 Revision (3h): Recursion + Backtracking full sweep — Combo Sum I/II/III, Subset Sum, Palindrome Part, M-Coloring",
+  "Sun, Jul 5": "🔁 Revision (3h): Word Break, Word Search, Rat in Maze + LL Insertion/Deletion drills",
+  "Mon, Jul 6": "🔁 Revision (1h): Reverse LL (iter + rec), Floyd's cycle detection, Find Middle",
+  "Tue, Jul 7": "🔁 Revision (1h): Palindrome LL, Intersection, Add Two Numbers, Reverse K-Group",
+  "Wed, Jul 8": "🔁 Revision (1h): LL Hard — Flatten, Clone Random, Merge K Sorted",
+  "Thu, Jul 9": "🔁 Revision (1h): LL Medium — Find Middle, Detect Cycle, Reverse K-Group",
+  "Fri, Jul 10": "🔁 Revision (1h): Greedy classics — N Meetings, Job Sequencing, Min Platforms",
+  "Sat, Jul 11": "🔁 Revision (3h): Stack/Queue full sweep — Min Stack, Largest Rect, LRU, Sliding Window Max",
+  "Sun, Jul 12": "🔁 Revision (3h): Heaps full sweep — Median Stream, Top K Freq, Kth Largest Stream, Connect Sticks",
+  "Mon, Jul 13": "🔁 Revision (1h): Arrays easy — Two Sum, Kadane, Dutch Flag, Best Time Buy Sell",
+  "Tue, Jul 14": "🔁 Revision (1h): Greedy + Intervals — Merge Intervals, N Meetings, Job Sequencing",
+  "Wed, Jul 15": "🔁 Revision (1h): LL Hard — Flatten, Clone Random, Merge K Sorted",
+  "Thu, Jul 16": "🔁 Revision (1h): Arrays hard — 3-Sum, 4-Sum, Merge Overlapping, Count Inversions",
+  "Fri, Jul 17": "🔁 Revision (1h): Recursion / Backtracking — N-Queens, Sudoku, Combo Sum",
+  "Sat, Jul 18": "🔁 Revision (3h): Trees + BST full sweep — Serialize/Deserialize, LCA, Validate BST, BST Iterator, Largest BST",
+  "Sun, Jul 19": "🔁 Revision (3h): Graphs full sweep — Dijkstra, Bellman-Ford, Prim, Kruskal, Kosaraju, Bridges",
+  "Mon, Jul 20": "🔁 Revision (1h): BS on Answers — Aggressive Cows, Book Allocation, Koko, Smallest Divisor",
+  "Tue, Jul 21": "🔁 Revision (1h): BS rotated — Rotated I/II, Find Min, Single Element, How Many Rotations",
+  "Wed, Jul 22": "🔁 Revision (1h): 2D BS — Search Matrix I/II, Peak 2D, Median Row-wise",
+  "Thu, Jul 23": "🔁 Revision (1h): Strings basic — LCP, Reverse Words, Roman/Int, Isomorphic",
+  "Fri, Jul 24": "🔁 Revision (1h): Strings hard — Longest Palindromic Substring, Atoi, KMP/Z-algo",
+  "Sat, Jul 25": "🔁 Revision (3h): Arrays full sweep — Kadane, Dutch Flag, 3-Sum, 4-Sum, Repeating/Missing, Reverse Pairs, Max Product Subarray",
+  "Sun, Jul 26": "🔁 Final Revision (3h): Re-solve ALL 🔴 flagged + 🟡 flagged from DP/Graphs/Trees/Backtracking + Mock Interview",
+};
+
+const dataset: Record<string, Problem[]> = {
+  "PHASE 1: DYNAMIC PROGRAMMING": [
+    {id:"p1-1", title:"Fibonacci Number", sde:false, day:"Mon, Apr 27"},
+    {id:"p1-2", title:"Climbing Stairs / Count Ways to Reach Nth Stair", sde:false, day:"Mon, Apr 27"},
+    {id:"p1-3", title:"Frog Jump (DP-3)", sde:false, day:"Mon, Apr 27"},
+    {id:"p1-4", title:"Frog Jump with K Distances (DP-4)", sde:false, day:"Tue, Apr 28"},
+    {id:"p1-5", title:"Maximum Sum of Non-Adjacent Elements (House Robber)", sde:false, day:"Tue, Apr 28"},
+    {id:"p1-6", title:"House Robber II (Circular)", sde:false, day:"Wed, Apr 29"},
+    {id:"p1-7", title:"Ninja's Training (2D DP intro)", sde:false, day:"Wed, Apr 29"},
+    {id:"p1-8", title:"Grid Unique Paths (Count paths)", sde:true, day:"Thu, Apr 30"},
+    {id:"p1-9", title:"Grid Unique Paths 2 (With obstacles)", sde:false, day:"Thu, Apr 30"},
+    {id:"p1-10", title:"Minimum Path Sum in Grid", sde:true, day:"Fri, May 1"},
+    {id:"p1-11", title:"Triangle — Minimum Path Sum", sde:false, day:"Fri, May 1"},
+    {id:"p1-12", title:"Minimum Falling Path Sum", sde:false, day:"Sat, May 2"},
+    {id:"p1-13", title:"Maximum Falling Path Sum", sde:false, day:"Sat, May 2"},
+    {id:"p1-14", title:"Cherry Pickup (3D DP)", sde:false, day:"Sat, May 2"},
+    {id:"p1-15", title:"Chocolate Pickup (3D DP variant)", sde:false, day:"Sat, May 2"},
+    {id:"p1-16", title:"Subset Sum Equal to Target", sde:true, day:"Sat, May 2"},
+    {id:"p1-17", title:"Partition Equal Subset Sum", sde:false, day:"Sat, May 2"},
+    {id:"p1-18", title:"Count Subsets with Sum K", sde:false, day:"Sat, May 2"},
+    {id:"p1-19", title:"Count Partitions with Given Difference", sde:false, day:"Sat, May 2"},
+    {id:"p1-20", title:"0/1 Knapsack", sde:true, day:"Sun, May 3"},
+    {id:"p1-21", title:"Minimum Coins (Coin Change)", sde:true, day:"Sun, May 3"},
+    {id:"p1-22", title:"Target Sum", sde:false, day:"Sun, May 3"},
+    {id:"p1-23", title:"Coin Change 2 (Count Ways)", sde:false, day:"Sun, May 3"},
+    {id:"p1-24", title:"Unbounded Knapsack", sde:false, day:"Sun, May 3"},
+    {id:"p1-25", title:"Rod Cutting Problem", sde:true, day:"Sun, May 3"},
+    {id:"p1-26", title:"Longest Common Subsequence (LCS)", sde:true, day:"Sun, May 3"},
+    {id:"p1-27", title:"Print Longest Common Subsequence", sde:false, day:"Mon, May 4"},
+    {id:"p1-28", title:"Longest Common Substring", sde:false, day:"Mon, May 4"},
+    {id:"p1-29", title:"Shortest Common Supersequence", sde:false, day:"Tue, May 5"},
+    {id:"p1-30", title:"Minimum Insertions to Convert String A to B", sde:false, day:"Tue, May 5"},
+    {id:"p1-31", title:"Minimum Deletions to Convert String A to B", sde:false, day:"Tue, May 5"},
+    {id:"p1-32", title:"Distinct Subsequences", sde:false, day:"Wed, May 6"},
+    {id:"p1-33", title:"Edit Distance", sde:true, day:"Wed, May 6"},
+    {id:"p1-34", title:"Wildcard Matching", sde:false, day:"Thu, May 7"},
+    {id:"p1-35", title:"Best Time to Buy and Sell Stock I", sde:false, day:"Thu, May 7"},
+    {id:"p1-36", title:"Best Time to Buy and Sell Stock II", sde:false, day:"Thu, May 7"},
+    {id:"p1-37", title:"Best Time to Buy and Sell Stock III", sde:false, day:"Fri, May 8"},
+    {id:"p1-38", title:"Best Time to Buy and Sell Stock IV", sde:false, day:"Fri, May 8"},
+    {id:"p1-39", title:"Buy and Sell Stock with Cooldown", sde:false, day:"Sat, May 9"},
+    {id:"p1-40", title:"Buy and Sell Stock with Transaction Fee", sde:false, day:"Sat, May 9"},
+    {id:"p1-41", title:"Longest Increasing Subsequence — Recursion (Pick/Not-Pick)", sde:true, day:"Sat, May 9"},
+    {id:"p1-42", title:"Longest Increasing Subsequence — Binary Search (Patience)", sde:true, day:"Sat, May 9"},
+    {id:"p1-43", title:"Longest Increasing Subsequence — DP O(n²) optimal", sde:true, day:"Sat, May 9"},
+    {id:"p1-44", title:"Print Longest Increasing Subsequence", sde:false, day:"Sat, May 9"},
+    {id:"p1-45", title:"Largest Divisible Subset", sde:false, day:"Sat, May 9"},
+    {id:"p1-46", title:"Longest String Chain", sde:false, day:"Sat, May 9"},
+    {id:"p1-47", title:"Longest Bitonic Subsequence", sde:false, day:"Sat, May 9"},
+    {id:"p1-48", title:"Number of Longest Increasing Subsequences", sde:false, day:"Sat, May 9"},
+    {id:"p1-49", title:"Matrix Chain Multiplication (MCM)", sde:true, day:"Sun, May 10"},
+    {id:"p1-50", title:"Minimum Cost to Cut a Stick", sde:false, day:"Sun, May 10"},
+    {id:"p1-51", title:"Burst Balloons", sde:false, day:"Sun, May 10"},
+    {id:"p1-52", title:"Evaluate Boolean Expression to True", sde:false, day:"Sun, May 10"},
+    {id:"p1-53", title:"Palindrome Partitioning II (Min Cuts)", sde:true, day:"Sun, May 10"},
+    {id:"p1-54", title:"Partition Array for Maximum Sum", sde:false, day:"Sun, May 10"},
+    {id:"p1-55", title:"Count Square Submatrices with All 1s", sde:false, day:"Sun, May 10"},
+    {id:"p1-56", title:"Maximal Rectangle", sde:true, day:"Sun, May 10"},
+    {id:"p1-57", title:"Egg Dropping Puzzle", sde:true, day:"Sun, May 10"},
+    {id:"p1-58", title:"Maximum Profit in Job Scheduling", sde:true, day:"Sun, May 10"},
+  ],
+  "PHASE 2: TRIES": [
+    {id:"p2-1", title:"Implement Trie (Insert, Search, StartsWith)", sde:true, day:"Mon, May 11"},
+    {id:"p2-2", title:"Implement Trie II (Insert, countWordsEqualTo, countWordsStartingWith)", sde:true, day:"Mon, May 11"},
+    {id:"p2-3", title:"Complete String (Longest Word with All Prefixes)", sde:true, day:"Mon, May 11"},
+    {id:"p2-4", title:"Number of Distinct Substrings in a String (using Trie)", sde:true, day:"Tue, May 12"},
+    {id:"p2-5", title:"Maximum XOR of Two Numbers in an Array", sde:true, day:"Tue, May 12"},
+    {id:"p2-6", title:"Maximum XOR With an Element From Array", sde:true, day:"Wed, May 13"},
+    {id:"p2-7", title:"Power Set using Trie", sde:false, day:"Wed, May 13"},
+  ],
   "PHASE 3: GRAPHS": [
     {id:"p3-1", title:"Graph Representation (Adjacency List / Matrix)", sde:false, day:"Fri, Jun 5"},
     {id:"p3-2", title:"Clone a Graph", sde:true, day:"Fri, Jun 5"},
@@ -400,133 +511,445 @@ const dataset: Record<string, any[]> = {
 
 export default function Tracker() {
   const [progress, setProgress] = useState<Record<string, string>>({});
-  const [activePhase, setActivePhase] = useState("PHASE 3: GRAPHS");
+  const [view, setView] = useState<'phase' | 'day' | 'revision' | 'completed'>('day');
+  const [activePhase, setActivePhase] = useState('PHASE 3: GRAPHS');
+  const [activeDayKey, setActiveDayKey] = useState(() => {
+    const n = new Date();
+    const DN = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const MN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${DN[n.getDay()]}, ${MN[n.getMonth()]} ${n.getDate()}`;
+  });
 
   useEffect(() => {
-    fetch('/api/progress').then(res => res.json()).then(data => setProgress(data));
+    fetch('/api/progress').then(r => r.json()).then(setProgress).catch(() => {});
   }, []);
 
-  const handleStatusChange = async (problemId: string, currentStatus: string, targetStatus: string) => {
-    // If clicking the same status, it unchecks it back to unsolved
-    const newStatus = currentStatus === targetStatus ? 'unsolved' : targetStatus;
-    setProgress(prev => ({ ...prev, [problemId]: newStatus }));
-    
+  const toggle = async (id: string, target: string) => {
+    const cur = progress[id] || 'unsolved';
+    const next = cur === target ? 'unsolved' : target;
+    setProgress(p => ({ ...p, [id]: next }));
     await fetch('/api/progress', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ problemId, status: newStatus }),
+      body: JSON.stringify({ problemId: id, status: next }),
     });
   };
 
-  // Calculate master progress dynamically
-  const getMetrics = () => {
-    const allProblems = Object.values(dataset).flat();
-    const total = allProblems.length;
-    const completed = allProblems.filter(p => progress[p.id] === 'solved').length;
-    return { total, completed, remaining: total - completed };
-  };
-  const metrics = getMetrics();
+  const allProblems = useMemo(() => Object.values(dataset).flat() as Problem[], []);
+  const total = allProblems.length;
+  const solved = useMemo(() => allProblems.filter(p => progress[p.id] === 'solved').length, [allProblems, progress]);
+  const hinted = useMemo(() => allProblems.filter(p => progress[p.id] === 'hint').length, [allProblems, progress]);
+  const toRevise = useMemo(() => allProblems.filter(p => progress[p.id] === 'revisit').length, [allProblems, progress]);
 
+  const problemsByDay = useMemo(() => {
+    const map: Record<string, Problem[]> = {};
+    for (const p of allProblems) {
+      if (!map[p.day]) map[p.day] = [];
+      map[p.day].push(p);
+    }
+    return map;
+  }, [allProblems]);
+
+  const revisionByPhase = useMemo(() => {
+    const map: Record<string, Problem[]> = {};
+    for (const [ph, probs] of Object.entries(dataset)) {
+      const r = (probs as Problem[]).filter(p => progress[p.id] === 'revisit');
+      if (r.length > 0) map[ph] = r;
+    }
+    return map;
+  }, [progress]);
+
+  const completedByPhase = useMemo(() => {
+    const map: Record<string, Problem[]> = {};
+    for (const [ph, probs] of Object.entries(dataset)) {
+      const c = (probs as Problem[]).filter(p => progress[p.id] === 'solved' || progress[p.id] === 'hint');
+      if (c.length > 0) map[ph] = c;
+    }
+    return map;
+  }, [progress]);
+
+  // ── Calendar helpers ──────────────────────────────────────────────────
+  const MONTH_IDX: Record<string, number> = { Apr: 3, May: 4, Jun: 5, Jul: 6 };
+  const _now = new Date();
+  const TODAY_DATE = new Date(_now.getFullYear(), _now.getMonth(), _now.getDate());
+  const STUDY_START = new Date(2026, 3, 27);
+  const STUDY_END   = new Date(2026, 6, 26);
+
+  function parseDayKey(key: string): Date | null {
+    const m = key.match(/\w+, (\w+) (\d+)/);
+    if (!m || !(m[1] in MONTH_IDX)) return null;
+    return new Date(2026, MONTH_IDX[m[1]], +m[2]);
+  }
+
+  function dayStatus(dayKey: string): string {
+    const date = parseDayKey(dayKey);
+    const probs = problemsByDay[dayKey] || [];
+    if (!date || probs.length === 0) return 'empty';
+    const done = probs.filter(p => progress[p.id] === 'solved' || progress[p.id] === 'hint').length;
+    const isToday = date.getTime() === TODAY_DATE.getTime();
+    const isPast  = date < TODAY_DATE;
+    if (isToday) return done === probs.length ? 'todayDone' : 'today';
+    if (!isPast)  return 'future';
+    if (done === probs.length) return 'done';
+    if (done > 0) return 'partial';
+    return 'overdue';
+  }
+
+  function buildDayKey(month: number, day: number): string {
+    const d = new Date(2026, month, day);
+    const DN = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+    const MN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return `${DN[d.getDay()]}, ${MN[d.getMonth()]} ${day}`;
+  }
+
+  function buildMonthGrid(month: number, days: number): (number | null)[] {
+    const offset = (new Date(2026, month, 1).getDay() + 6) % 7;
+    const cells: (number | null)[] = Array(offset).fill(null);
+    for (let d = 1; d <= days; d++) cells.push(d);
+    while (cells.length % 7 !== 0) cells.push(null);
+    return cells;
+  }
+
+  function isInStudyRange(month: number, day: number) {
+    const d = new Date(2026, month, day);
+    return d >= STUDY_START && d <= STUDY_END;
+  }
+
+  const calMonths = [
+    { name: 'April 2026',  month: 3, days: 30 },
+    { name: 'May 2026',    month: 4, days: 31 },
+    { name: 'June 2026',   month: 5, days: 30 },
+    { name: 'July 2026',   month: 6, days: 26 },
+  ];
+
+  const cellStyle: Record<string, string> = {
+    overdue:  'bg-rose-950/70 border border-rose-600/60 text-rose-300',
+    today:    'bg-blue-950/60 ring-2 ring-blue-400 text-blue-200',
+    todayDone:'bg-emerald-950/50 ring-2 ring-emerald-400 text-emerald-300',
+    future:   'bg-slate-800/30 border border-slate-700/20 text-slate-500',
+    done:     'bg-emerald-950/50 border border-emerald-700/40 text-emerald-400',
+    partial:  'bg-amber-950/50 border border-amber-600/40 text-amber-400',
+    empty:    'text-slate-700 cursor-default',
+  };
+
+  // ── Row component ─────────────────────────────────────────────────────
+  const Row = ({ p }: { p: Problem }) => {
+    const s = progress[p.id] || 'unsolved';
+    return (
+      <div className={`px-4 py-3 flex items-center gap-3 border-b border-slate-800/40 last:border-0 transition-colors ${
+        s === 'solved' ? 'bg-emerald-950/10' : s === 'revisit' ? 'bg-rose-950/10' : 'hover:bg-slate-800/20'
+      }`}>
+        {/* Status dot */}
+        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+          s === 'solved' ? 'bg-emerald-500' : s === 'hint' ? 'bg-amber-400' : s === 'revisit' ? 'bg-rose-500' : 'bg-slate-700'
+        }`} />
+        {/* Title */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className={`text-sm font-medium ${
+              s === 'solved' ? 'text-slate-500 line-through' : s === 'revisit' ? 'text-rose-200' : s === 'hint' ? 'text-amber-200' : 'text-slate-200'
+            }`}>{p.title}</span>
+            {p.sde && <span className="shrink-0 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[9px] font-extrabold px-1.5 py-0.5 rounded-full tracking-wide">SDE</span>}
+          </div>
+          <span className="text-[10px] text-slate-600 font-mono">{p.day}</span>
+        </div>
+        {/* Buttons */}
+        <div className="flex gap-1 shrink-0">
+          <button onClick={() => toggle(p.id, 'solved')} title="Solved"
+            className={`px-2.5 py-1 rounded-lg text-xs font-black border transition-all ${
+              s === 'solved'
+                ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-400'
+                : 'border-slate-700/60 text-slate-600 hover:border-emerald-600/50 hover:text-emerald-500 hover:bg-emerald-950/20'
+            }`}>✓</button>
+          <button onClick={() => toggle(p.id, 'hint')} title="Needed hint"
+            className={`px-2.5 py-1 rounded-lg text-xs font-black border transition-all ${
+              s === 'hint'
+                ? 'bg-amber-500/20 border-amber-500/50 text-amber-400'
+                : 'border-slate-700/60 text-slate-600 hover:border-amber-600/50 hover:text-amber-500 hover:bg-amber-950/20'
+            }`}>~</button>
+          <button onClick={() => toggle(p.id, 'revisit')} title="Need to revise"
+            className={`px-2.5 py-1 rounded-lg text-xs font-black border transition-all ${
+              s === 'revisit'
+                ? 'bg-rose-500/20 border-rose-500/50 text-rose-400'
+                : 'border-slate-700/60 text-slate-600 hover:border-rose-600/50 hover:text-rose-500 hover:bg-rose-950/20'
+            }`}>↺</button>
+        </div>
+      </div>
+    );
+  };
+
+  // ── Render ────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans p-4 md:p-8">
-      <div className="max-w-5xl mx-auto space-y-6">
-        
-        {/* Header Dashboard */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
-          <h1 className="text-2xl font-bold tracking-tight text-emerald-400">
-            Striver A2Z Tracker (Phase 3 - 11)
-          </h1>
-          <div className="grid grid-cols-3 gap-4 mt-4 text-center">
-            <div className="bg-slate-950/50 p-3 rounded-lg border border-slate-800/60">
-              <span className="block text-xs text-slate-400 uppercase font-semibold">Total</span>
-              <span className="text-xl font-bold text-slate-200">{metrics.total}</span>
+    <div className="min-h-screen bg-[#0a0a0f] text-slate-100 font-sans">
+      <div className="max-w-4xl mx-auto px-4 py-6 space-y-4">
+
+        {/* ─── Header ─────────────────────────────────────────────── */}
+        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-2xl">
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <div>
+              <h1 className="text-lg font-black text-white tracking-tight">Striver A2Z DSA</h1>
+              <p className="text-[11px] text-slate-500 mt-0.5">Apr 27 – Jul 26, 2026 · 426 problems</p>
             </div>
-            <div className="bg-slate-950/50 p-3 rounded-lg border border-slate-800/60">
-              <span className="block text-xs text-emerald-400 uppercase font-semibold">Completed</span>
-              <span className="text-xl font-bold text-emerald-400">{metrics.completed}</span>
+            <div className="text-right shrink-0">
+              <div className="text-3xl font-black text-emerald-400 leading-none">
+                {total > 0 ? Math.round(((solved + hinted) / total) * 100) : 0}%
+              </div>
+              <div className="text-[10px] text-slate-600 mt-0.5">complete</div>
             </div>
-            <div className="bg-slate-950/50 p-3 rounded-lg border border-slate-800/60">
-              <span className="block text-xs text-slate-400 uppercase font-semibold">Remaining</span>
-              <span className="text-xl font-bold text-slate-400">{metrics.remaining}</span>
+          </div>
+          {/* Segmented progress bar */}
+          <div className="h-2 bg-slate-800 rounded-full overflow-hidden mb-3">
+            <div className="h-full flex rounded-full overflow-hidden">
+              <div className="bg-emerald-500 transition-all duration-500" style={{ width: `${(solved / total) * 100}%` }} />
+              <div className="bg-amber-400 transition-all duration-500" style={{ width: `${(hinted / total) * 100}%` }} />
             </div>
+          </div>
+          {/* Stats grid */}
+          <div className="grid grid-cols-4 gap-2 text-center text-xs">
+            {[
+              { label: 'Total',   val: total,    cls: 'text-slate-300',  bg: 'bg-slate-800/60' },
+              { label: 'Solved',  val: solved,   cls: 'text-emerald-400', bg: 'bg-emerald-950/40 border border-emerald-900/30' },
+              { label: 'Hint',    val: hinted,   cls: 'text-amber-400',  bg: 'bg-amber-950/30 border border-amber-900/20' },
+              { label: 'Revise',  val: toRevise, cls: 'text-rose-400',   bg: 'bg-rose-950/30 border border-rose-900/20' },
+            ].map(({ label, val, cls, bg }) => (
+              <div key={label} className={`${bg} rounded-xl p-2.5`}>
+                <div className={`text-xl font-black ${cls}`}>{val}</div>
+                <div className="text-[10px] text-slate-500 uppercase font-semibold">{label}</div>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Phase Filter Tabs */}
-        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
-          {Object.keys(dataset).map(phase => (
-            <button
-              key={phase}
-              onClick={() => setActivePhase(phase)}
-              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap border ${
-                activePhase === phase 
-                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' 
-                  : 'bg-slate-900 text-slate-400 border-slate-800 hover:border-slate-700'
-              }`}
-            >
-              {phase}
+        {/* ─── Tabs ───────────────────────────────────────────────── */}
+        <div className="flex gap-1 p-1 bg-slate-900/60 border border-slate-800 rounded-xl">
+          {([['phase','Phase'], ['day','Calendar'], ['completed','Done'], ['revision','Revise']] as const).map(([v, label]) => (
+            <button key={v} onClick={() => setView(v)}
+              className={`relative flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                view === v ? 'bg-slate-700 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
+              }`}>
+              {label}
+              {v === 'revision' && toRevise > 0 && (
+                <span className="absolute -top-1 -right-0.5 min-w-[14px] h-3.5 bg-rose-500 text-white text-[8px] font-black rounded-full flex items-center justify-center px-0.5">
+                  {toRevise > 9 ? '9+' : toRevise}
+                </span>
+              )}
+              {v === 'completed' && (solved + hinted) > 0 && (
+                <span className="absolute -top-1 -right-0.5 min-w-[14px] h-3.5 bg-emerald-500 text-white text-[8px] font-black rounded-full flex items-center justify-center px-0.5">
+                  {(solved + hinted) > 99 ? '99+' : solved + hinted}
+                </span>
+              )}
             </button>
           ))}
         </div>
 
-        {/* Dynamic Problems Grid */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl divide-y divide-slate-800 shadow-xl overflow-hidden">
-          {dataset[activePhase].map((problem) => {
-            const currentStatus = progress[problem.id] || 'unsolved';
-            return (
-              <div key={problem.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-slate-850/40 transition-colors">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-slate-200">{problem.title}</span>
-                    {problem.sde && (
-                      <span className="bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] uppercase font-extrabold px-1.5 py-0.5 rounded">
-                        SDE
-                      </span>
-                    )}
+        {/* ─── PHASE VIEW ─────────────────────────────────────────── */}
+        {view === 'phase' && (
+          <div className="space-y-3">
+            <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+              {Object.keys(dataset).map(ph => {
+                const phProbs = dataset[ph] as Problem[];
+                const phDone = phProbs.filter(p => progress[p.id] === 'solved' || progress[p.id] === 'hint').length;
+                const pct = Math.round((phDone / phProbs.length) * 100);
+                return (
+                  <button key={ph} onClick={() => setActivePhase(ph)}
+                    className={`shrink-0 px-3 py-1.5 rounded-xl text-[11px] font-bold whitespace-nowrap border transition-all ${
+                      activePhase === ph
+                        ? 'bg-slate-700 text-white border-slate-600'
+                        : 'bg-slate-900/60 text-slate-400 border-slate-800 hover:border-slate-700'
+                    }`}>
+                    {ph.replace('PHASE ', 'P').split(':')[0]}
+                    <span className={`ml-1.5 font-normal text-[9px] ${pct === 100 ? 'text-emerald-400' : pct > 0 ? 'text-amber-400' : 'text-slate-600'}`}>{pct}%</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="bg-slate-900/80 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+              <div className="px-4 py-3 bg-slate-800/30 border-b border-slate-800 flex justify-between items-center">
+                <div>
+                  <div className="font-bold text-slate-100 text-sm">{activePhase}</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    {(dataset[activePhase] as Problem[])?.filter(p => progress[p.id] === 'solved').length} solved
+                    {' · '}{(dataset[activePhase] as Problem[])?.filter(p => progress[p.id] === 'hint').length} hint
+                    {' · '}{(dataset[activePhase] as Problem[])?.filter(p => progress[p.id] === 'revisit').length} revise
                   </div>
-                  <span className="block text-xs text-slate-500 font-mono">{problem.day}</span>
                 </div>
-
-                <div className="flex items-center gap-1.5 self-end sm:self-auto">
-                  {/* Completed Checkbox */}
-                  <button
-                    onClick={() => handleStatusChange(problem.id, currentStatus, 'solved')}
-                    className={`w-9 h-9 rounded-lg border text-sm flex items-center justify-center transition-all ${
-                      currentStatus === 'solved' ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' : 'bg-slate-950 border-slate-800 hover:border-slate-700'
-                    }`}
-                    title="Mark Completed"
-                  >
-                    🟢
-                  </button>
-                  {/* Hint Checkbox */}
-                  <button
-                    onClick={() => handleStatusChange(problem.id, currentStatus, 'hint')}
-                    className={`w-9 h-9 rounded-lg border text-sm flex items-center justify-center transition-all ${
-                      currentStatus === 'hint' ? 'bg-yellow-500/20 border-yellow-500 text-yellow-400' : 'bg-slate-950 border-slate-800 hover:border-slate-700'
-                    }`}
-                    title="Needed Hint"
-                  >
-                    🟡
-                  </button>
-                  {/* Revise Checkbox */}
-                  <button
-                    onClick={() => handleStatusChange(problem.id, currentStatus, 'revisit')}
-                    className={`w-9 h-9 rounded-lg border text-sm flex items-center justify-center transition-all ${
-                      currentStatus === 'revisit' ? 'bg-red-500/20 border-red-500 text-red-400' : 'bg-slate-950 border-slate-800 hover:border-slate-700'
-                    }`}
-                    title="Mark to Revise"
-                  >
-                    🔴
-                  </button>
-                </div>
+                <span className="text-sm font-black text-slate-300">
+                  {(dataset[activePhase] as Problem[])?.filter(p => progress[p.id] === 'solved' || progress[p.id] === 'hint').length}
+                  <span className="text-slate-600 font-normal text-xs">/{(dataset[activePhase] as Problem[])?.length}</span>
+                </span>
               </div>
-            );
-          })}
-        </div>
+              <div>{(dataset[activePhase] as Problem[])?.map(p => <Row key={p.id} p={p} />)}</div>
+            </div>
+          </div>
+        )}
+
+        {/* ─── CALENDAR VIEW ──────────────────────────────────────── */}
+        {view === 'day' && (
+          <div className="flex flex-col md:flex-row gap-4 items-start">
+
+            {/* LEFT: compact calendar sidebar */}
+            <div className="w-full md:w-56 shrink-0 space-y-2 md:sticky md:top-4">
+              {/* Legend */}
+              <div className="flex flex-wrap gap-x-2 gap-y-1 text-[9px] text-slate-500 px-0.5 pb-1">
+                {[
+                  { color: 'bg-rose-700/70',    label: 'Overdue' },
+                  { color: 'bg-amber-700/60',   label: 'Partial' },
+                  { color: 'bg-emerald-700/60', label: 'Done' },
+                  { color: 'ring-1 ring-blue-400', label: 'Today' },
+                ].map(({ color, label }) => (
+                  <span key={label} className="flex items-center gap-1">
+                    <span className={`w-2 h-2 rounded-sm ${color} inline-block shrink-0`} />
+                    {label}
+                  </span>
+                ))}
+              </div>
+
+              {calMonths.map(({ name, month, days }) => {
+                const grid = buildMonthGrid(month, days);
+                const hasStudyDays = grid.some(d => d !== null && isInStudyRange(month, d));
+                if (!hasStudyDays) return null;
+                return (
+                  <div key={name} className="bg-slate-900/80 border border-slate-800 rounded-xl overflow-hidden">
+                    <div className="px-3 py-1.5 bg-slate-800/30 border-b border-slate-800">
+                      <h3 className="font-bold text-slate-300 text-[11px]">{name}</h3>
+                    </div>
+                    <div className="p-2">
+                      {/* Day-of-week headers */}
+                      <div className="grid grid-cols-7 mb-1">
+                        {['M','T','W','T','F','S','S'].map((d, i) => (
+                          <div key={i} className="text-center text-[8px] font-bold text-slate-700">{d}</div>
+                        ))}
+                      </div>
+                      {/* Day cells */}
+                      <div className="grid grid-cols-7 gap-0.5">
+                        {grid.map((day, idx) => {
+                          if (day === null) return <div key={idx} className="h-7" />;
+                          if (!isInStudyRange(month, day)) {
+                            return <div key={idx} className="h-7 flex items-center justify-center text-[10px] text-slate-800 font-medium">{day}</div>;
+                          }
+                          const dk = buildDayKey(month, day);
+                          const probs = problemsByDay[dk] || [];
+                          const status = probs.length > 0 ? dayStatus(dk) : 'empty';
+                          const isSelected = activeDayKey === dk;
+                          return (
+                            <button key={idx}
+                              onClick={() => probs.length > 0 && setActiveDayKey(dk)}
+                              className={`h-7 rounded-md flex flex-col items-center justify-center transition-all text-[10px] font-bold ${
+                                probs.length > 0 ? 'cursor-pointer' : 'cursor-default'
+                              } ${cellStyle[status] || 'text-slate-700'} ${
+                                isSelected && probs.length > 0 ? 'ring-2 ring-white/40 ring-offset-1 ring-offset-slate-900' : ''
+                              }`}>
+                              {day}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* RIGHT: Selected day problems */}
+            <div className="flex-1 min-w-0">
+              {activeDayKey && (problemsByDay[activeDayKey] || []).length > 0 ? (
+                <div className="bg-slate-900/80 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
+                  <div className="px-4 py-3 bg-slate-800/30 border-b border-slate-800 flex items-center justify-between">
+                    <div>
+                      <div className="font-bold text-slate-100">{activeDayKey}</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">
+                        {(problemsByDay[activeDayKey] || []).filter(p => progress[p.id] === 'solved' || progress[p.id] === 'hint').length}
+                        /{(problemsByDay[activeDayKey] || []).length} done
+                        {(problemsByDay[activeDayKey] || []).filter(p => progress[p.id] === 'revisit').length > 0 &&
+                          ` · ${(problemsByDay[activeDayKey] || []).filter(p => progress[p.id] === 'revisit').length} to revise`}
+                      </div>
+                    </div>
+                    {(() => {
+                      const st = dayStatus(activeDayKey);
+                      const cfg: Record<string, [string, string]> = {
+                        overdue:  ['bg-rose-950/60 text-rose-400',       'Overdue'],
+                        partial:  ['bg-amber-950/50 text-amber-400',     'In Progress'],
+                        done:     ['bg-emerald-950/50 text-emerald-400', 'Complete'],
+                        today:    ['bg-blue-950/50 text-blue-400',       'Today'],
+                        todayDone:['bg-emerald-950/50 text-emerald-400', 'Today ✓'],
+                        future:   ['bg-slate-800 text-slate-400',        'Upcoming'],
+                      };
+                      const [style, label] = cfg[st] || ['bg-slate-800 text-slate-400', ''];
+                      return <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${style}`}>{label}</span>;
+                    })()}
+                  </div>
+                  <div>{(problemsByDay[activeDayKey] || []).map(p => <Row key={p.id} p={p} />)}</div>
+                  {revisionNotes[activeDayKey] && (
+                    <div className="px-4 py-3 border-t border-amber-900/30 bg-amber-950/10 flex gap-2.5 items-start">
+                      <span className="text-amber-500 shrink-0 mt-0.5">🔁</span>
+                      <span className="text-[11px] text-amber-300/80 leading-relaxed">{revisionNotes[activeDayKey]}</span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-10 text-center">
+                  <p className="text-slate-500 text-sm">Select a day from the calendar.</p>
+                </div>
+              )}
+            </div>
+
+          </div>
+        )}
+
+        {/* ─── COMPLETED VIEW ─────────────────────────────────────── */}
+        {view === 'completed' && (
+          Object.keys(completedByPhase).length === 0 ? (
+            <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-14 text-center">
+              <p className="text-slate-400 font-medium">No problems completed yet.</p>
+              <p className="text-slate-600 text-xs mt-2">Mark ✓ (solved) or ~ (needed hint) on any problem.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs text-slate-500 px-1">{solved + hinted} done — {solved} solved, {hinted} with hint — across {Object.keys(completedByPhase).length} phases</p>
+              {Object.entries(completedByPhase).map(([ph, probs]) => (
+                <div key={ph} className="bg-slate-900/80 border border-emerald-900/25 rounded-xl overflow-hidden shadow-xl">
+                  <div className="px-4 py-3 bg-emerald-950/15 border-b border-emerald-900/20 flex justify-between items-center">
+                    <div>
+                      <div className="font-bold text-emerald-300 text-sm">{ph}</div>
+                      <div className="text-[10px] text-emerald-600/70 mt-0.5">
+                        {probs.filter(p => progress[p.id] === 'solved').length} solved · {probs.filter(p => progress[p.id] === 'hint').length} hint
+                      </div>
+                    </div>
+                    <span className="text-xs font-black text-emerald-400">{probs.length}<span className="text-slate-600 font-normal">/{(dataset[ph] as Problem[]).length}</span></span>
+                  </div>
+                  <div>{probs.map(p => <Row key={p.id} p={p} />)}</div>
+                </div>
+              ))}
+            </div>
+          )
+        )}
+
+        {/* ─── REVISION VIEW ──────────────────────────────────────── */}
+        {view === 'revision' && (
+          Object.keys(revisionByPhase).length === 0 ? (
+            <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-14 text-center">
+              <p className="text-slate-400 font-medium">No problems marked for revision.</p>
+              <p className="text-slate-600 text-xs mt-2">Mark ↺ on any problem to add it here.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-xs text-slate-500 px-1">{toRevise} to revise across {Object.keys(revisionByPhase).length} phases — mark ✓ or ~ to remove.</p>
+              {Object.entries(revisionByPhase).map(([ph, probs]) => (
+                <div key={ph} className="bg-slate-900/80 border border-rose-900/25 rounded-xl overflow-hidden shadow-xl">
+                  <div className="px-4 py-3 bg-rose-950/15 border-b border-rose-900/20 flex justify-between items-center">
+                    <div>
+                      <div className="font-bold text-rose-300 text-sm">{ph}</div>
+                      <div className="text-[10px] text-rose-600/70 mt-0.5">{probs.length} to revise</div>
+                    </div>
+                  </div>
+                  <div>{probs.map(p => <Row key={p.id} p={p} />)}</div>
+                </div>
+              ))}
+            </div>
+          )
+        )}
 
       </div>
     </div>
   );
 }
-
-```
