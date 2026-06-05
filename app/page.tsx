@@ -1,7 +1,8 @@
 'use client';
 import { useState, useEffect } from 'react';
 
-const dataset = {
+// Added types to the dataset
+const dataset: Record<string, any[]> = {
   "PHASE 1: DYNAMIC PROGRAMMING": [
     { id: "fibonacci", title: "Fibonacci Number", day: "Apr 27" },
     { id: "climbing-stairs", title: "Climbing Stairs", day: "Apr 27" },
@@ -13,16 +14,19 @@ const dataset = {
 };
 
 export default function Tracker() {
-  const [progress, setProgress] = useState({});
+  // Added Record<string, string> to tell TypeScript what the progress object looks like
+  const [progress, setProgress] = useState<Record<string, string>>({});
   const [activePhase, setActivePhase] = useState("PHASE 1: DYNAMIC PROGRAMMING");
 
   useEffect(() => {
     fetch('/api/progress').then(res => res.json()).then(data => setProgress(data));
   }, []);
 
-  const handleStatusChange = async (problemId, currentStatus, targetStatus) => {
+  // Added ": string" to the parameters so TypeScript knows they are text
+  const handleStatusChange = async (problemId: string, currentStatus: string, targetStatus: string) => {
     const newStatus = currentStatus === targetStatus ? 'unsolved' : targetStatus;
     setProgress(prev => ({ ...prev, [problemId]: newStatus }));
+    
     await fetch('/api/progress', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -33,7 +37,7 @@ export default function Tracker() {
   return (
     <div className="min-h-screen bg-slate-900 text-white p-8 font-sans">
       <h1 className="text-3xl font-bold mb-6 text-emerald-400">Striver A2Z DSA Tracker</h1>
-
+      
       <div className="flex gap-2 mb-6">
         {Object.keys(dataset).map(phase => (
           <button key={phase} onClick={() => setActivePhase(phase)} className={`px-4 py-2 rounded ${activePhase === phase ? 'bg-emerald-500' : 'bg-slate-800'}`}>
