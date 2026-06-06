@@ -58,6 +58,24 @@ const revisionNotes: Record<string, string> = {
   "Sun, Jul 26": "🔁 Final Revision (3h): Re-solve ALL 🔴 flagged + 🟡 flagged from DP/Graphs/Trees/Backtracking + Mock Interview",
 };
 
+// Stage-based spaced repetition.
+// review_count in DB = which stage the problem is at (0-4).
+// A problem only appears in the revision queue when daysAgo >= SR_STAGES[review_count].nextInterval.
+// After "Recalled ✓": review_count++ → problem disappears until the NEXT stage's interval.
+// This means clicking recalled on Jun 7 (stage 0, 1-day) won't show it on Jun 8 again;
+// it shows next on Jun 10 (stage 1, 3-day from Jun 7).
+const SR_STAGES = [
+  { nextInterval: 1,  label: '1-day'   },  // stage 0 → first review, 1 day after solving
+  { nextInterval: 3,  label: '3-day'   },  // stage 1 → 3 days after 1st recall
+  { nextInterval: 7,  label: '1-week'  },  // stage 2 → 7 days after 2nd recall
+  { nextInterval: 14, label: '2-week'  },  // stage 3 → 14 days after 3rd recall
+  { nextInterval: 30, label: '1-month' },  // stage 4 → 30 days after 4th recall
+  // review_count ≥ 5 → fully learned, no more scheduled reviews
+];
+const SR_COLOR      = 'bg-slate-800/70 border-slate-600/50 text-slate-300';
+const OVERDUE_COLOR = 'bg-rose-950/50 border-rose-700/50 text-rose-300';
+const OVERDUE_DAILY_CAP = 10;
+
 const dataset: Record<string, Problem[]> = {
   "PHASE 1: DYNAMIC PROGRAMMING": [
     {id:"p1-1", title:"Fibonacci Number", sde:false, day:"Mon, Apr 27"},
@@ -511,6 +529,8 @@ const dataset: Record<string, Problem[]> = {
 
 export default function Tracker() {
   const [progress, setProgress] = useState<Record<string, string>>({});
+  const [updatedAt, setUpdatedAt] = useState<Record<string, string>>({});
+  const [reviewCount, setReviewCount] = useState<Record<string, number>>({});
   const [view, setView] = useState<'phase' | 'day' | 'revision' | 'completed'>('day');
   const [activePhase, setActivePhase] = useState('PHASE 3: GRAPHS');
   const [activeDayKey, setActiveDayKey] = useState(() => {
@@ -521,17 +541,34 @@ export default function Tracker() {
   });
 
   useEffect(() => {
-    fetch('/api/progress').then(r => r.json()).then(setProgress).catch(() => {});
+    fetch('/api/progress')
+      .then(r => r.json())
+      .then(data => {
+        if (data.status) {
+          setProgress(data.status);
+          setUpdatedAt(data.updatedAt || {});
+          setReviewCount(data.reviewCount || {});
+        } else {
+          setProgress(data);
+        }
+      })
+      .catch(() => {});
   }, []);
 
   const toggle = async (id: string, target: string) => {
     const cur = progress[id] || 'unsolved';
     const next = cur === target ? 'unsolved' : target;
     setProgress(p => ({ ...p, [id]: next }));
+    // Keep updatedAt in sync so revisionDueForDay can schedule this problem correctly.
+    // Without this, problems marked in the current session never appear in the revision queue.
+    if (next !== 'unsolved') {
+      setUpdatedAt(u => ({ ...u, [id]: new Date().toISOString() }));
+      setReviewCount(rc => ({ ...rc, [id]: 0 })); // reset SR stage on re-solve
+    }
     await fetch('/api/progress', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ problemId: id, status: next }),
+      body: JSON.stringify({ problemId: id, status: next, reviewCount: 0 }),
     });
   };
 
@@ -630,6 +667,111 @@ export default function Tracker() {
     done:     'bg-emerald-950/50 border border-emerald-700/40 text-emerald-400',
     partial:  'bg-amber-950/50 border border-amber-600/40 text-amber-400',
     empty:    'text-slate-700 cursor-default',
+  };
+
+  // ── Spaced Repetition helpers ─────────────────────────────────────────
+
+  // Map problem id → short phase label (e.g. "DYNAMIC PROGRAMMING")
+  const problemPhase = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const [ph, probs] of Object.entries(dataset)) {
+      const short = ph.split(':')[1]?.trim() ?? ph;
+      for (const p of probs as Problem[]) map[p.id] = short;
+    }
+    return map;
+  }, []);
+
+  // Returns problems due for review on dayKey.
+  // Logic: daysAgo >= SR_STAGES[review_count].nextInterval → due.
+  // After "Recalled ✓", review_count++ so the problem won't show again until the NEXT interval.
+  // Missed reviews persist (still show next day, next week) until recalled — never silently drop.
+  function revisionDueForDay(dayKey: string): Array<{ problem: Problem; stage: number; daysAgo: number; overdue: boolean }> {
+    const date = parseDayKey(dayKey);
+    if (!date) return [];
+    const result: Array<{ problem: Problem; stage: number; daysAgo: number; overdue: boolean }> = [];
+    for (const p of allProblems) {
+      const s  = progress[p.id];
+      const ua = updatedAt[p.id];
+      const stage = reviewCount[p.id] ?? 0;
+      if (!ua || (s !== 'solved' && s !== 'hint')) continue;
+      if (stage >= SR_STAGES.length) continue; // fully learned
+      const d    = new Date(ua);
+      const dOnly = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+      const daysAgo = Math.round((date.getTime() - dOnly.getTime()) / (1000 * 60 * 60 * 24));
+      const nextInterval = SR_STAGES[stage].nextInterval;
+      if (daysAgo >= nextInterval) {
+        // Overdue = 30+ days past the scheduled interval (severely missed)
+        const overdue = (daysAgo - nextInterval) >= 30 && date >= TODAY_DATE;
+        result.push({ problem: p, stage, daysAgo, overdue });
+      }
+    }
+    result.sort((a, b) => {
+      if (a.overdue !== b.overdue) return a.overdue ? -1 : 1;
+      if (a.stage  !== b.stage)   return a.stage - b.stage;
+      if (a.problem.sde !== b.problem.sde) return a.problem.sde ? -1 : 1;
+      return b.daysAgo - a.daysAgo;
+    });
+    return result;
+  }
+
+  // Increments review_count (advances SR stage) and stamps selected calendar date.
+  const markReviewed = async (id: string) => {
+    const s = progress[id];
+    if (!s || s === 'unsolved') return;
+    const recallDate = parseDayKey(activeDayKey) ?? new Date();
+    const isoDate = new Date(recallDate.getFullYear(), recallDate.getMonth(), recallDate.getDate(), 12).toISOString();
+    const nextStage = Math.min((reviewCount[id] ?? 0) + 1, SR_STAGES.length);
+    setUpdatedAt(u => ({ ...u, [id]: isoDate }));
+    setReviewCount(rc => ({ ...rc, [id]: nextStage }));
+    await fetch('/api/progress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ problemId: id, status: s, updatedAt: isoDate, reviewCount: nextStage }),
+    });
+  };
+
+  // ── RevisionRow component ─────────────────────────────────────────────
+  const RevisionRow = ({ p, stage, daysAgo, overdue }: { p: Problem; stage: number; daysAgo: number; overdue: boolean }) => {
+    const s = progress[p.id] || 'unsolved';
+    const stageInfo = SR_STAGES[stage];
+    const colorCls = overdue ? OVERDUE_COLOR : SR_COLOR;
+    const label    = overdue ? 'Overdue' : (stageInfo?.label ?? 'Review');
+    const stageNum = `${stage + 1}/${SR_STAGES.length}`;
+    return (
+      <div className="px-4 py-2.5 flex items-center gap-3 border-b border-slate-800/40 last:border-0 hover:bg-slate-800/10 transition-colors">
+        {/* Stage badge */}
+        <div className="shrink-0 flex flex-col items-center gap-0.5">
+          <span className={`text-[9px] font-black px-1.5 py-0.5 rounded border ${colorCls}`}>
+            {label}
+          </span>
+          <span className="text-[8px] text-slate-700 font-mono">{stageNum}</span>
+        </div>
+        {/* Title + phase */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm text-slate-300 font-medium">{p.title}</span>
+            {p.sde && (
+              <span className="shrink-0 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[9px] font-extrabold px-1.5 py-0.5 rounded-full tracking-wide">SDE</span>
+            )}
+          </div>
+          <span className="text-[10px] text-slate-600 font-mono">{daysAgo}d ago · {problemPhase[p.id]}</span>
+        </div>
+        {/* Status + action */}
+        <div className="flex items-center gap-2 shrink-0">
+          <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold ${
+            s === 'solved' ? 'bg-emerald-950/60 text-emerald-400' : 'bg-amber-950/60 text-amber-400'
+          }`}>
+            {s === 'solved' ? '✓ solved' : '~ hint'}
+          </span>
+          <button
+            onClick={() => markReviewed(p.id)}
+            title={`Recalled — advances to stage ${stage + 2}/${SR_STAGES.length}`}
+            className="px-2.5 py-1 rounded-lg text-[11px] font-bold border border-slate-700/60 text-slate-500 hover:border-emerald-600/50 hover:text-emerald-400 hover:bg-emerald-950/20 transition-all">
+            Recalled ✓
+          </button>
+        </div>
+      </div>
+    );
   };
 
   // ── Row component ─────────────────────────────────────────────────────
@@ -850,8 +992,8 @@ export default function Tracker() {
               })}
             </div>
 
-            {/* RIGHT: Selected day problems */}
-            <div className="flex-1 min-w-0">
+            {/* RIGHT: Selected day problems + revision */}
+            <div className="flex-1 min-w-0 space-y-4">
               {activeDayKey && (problemsByDay[activeDayKey] || []).length > 0 ? (
                 <div className="bg-slate-900/80 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
                   <div className="px-4 py-3 bg-slate-800/30 border-b border-slate-800 flex items-center justify-between">
@@ -891,6 +1033,104 @@ export default function Tracker() {
                   <p className="text-slate-500 text-sm">Select a day from the calendar.</p>
                 </div>
               )}
+
+              {/* ── Spaced Revision Queue ──────────────────────────────────── */}
+              {(() => {
+                if (!activeDayKey) return null;
+                const revList = revisionDueForDay(activeDayKey);
+                // If nothing is due, check if some of this day's problems were solved today
+                // → show a hint that revision starts tomorrow (1-day interval)
+                if (revList.length === 0) {
+                  const dayProbs = problemsByDay[activeDayKey] || [];
+                  const solvedToday = dayProbs.filter(p => {
+                    const s = progress[p.id];
+                    if (s !== 'solved' && s !== 'hint') return false;
+                    const ua = updatedAt[p.id];
+                    if (!ua) return false;
+                    const d = new Date(ua);
+                    const dOnly = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+                    return dOnly.getTime() === parseDayKey(activeDayKey)?.getTime();
+                  });
+                  if (solvedToday.length === 0) return null;
+                  return (
+                    <div className="bg-slate-900/60 border border-slate-800/60 rounded-xl px-4 py-3 flex items-center gap-3">
+                      <span className="text-slate-500 text-base">🕐</span>
+                      <p className="text-[11px] text-slate-500">
+                        <strong className="text-slate-400">{solvedToday.length} problem{solvedToday.length !== 1 ? 's' : ''} solved today</strong>
+                        {' — '}first revision appears <strong className="text-slate-400">tomorrow</strong> (1-day interval). Select tomorrow in the calendar to see them.
+                      </p>
+                    </div>
+                  );
+                }
+                const overdueList = revList.filter(x => x.overdue);
+                const scheduledList = revList.filter(x => !x.overdue);
+                const overdueShown = overdueList.slice(0, OVERDUE_DAILY_CAP);
+                const overdueHidden = overdueList.length - overdueShown.length;
+                const displayList = [...overdueShown, ...scheduledList];
+                const groupedByStage: Record<number, typeof scheduledList> = {};
+                for (const item of scheduledList) {
+                  if (!groupedByStage[item.stage]) groupedByStage[item.stage] = [];
+                  groupedByStage[item.stage].push(item);
+                }
+                return (
+                  <div className="bg-slate-900/80 border border-indigo-900/30 rounded-xl overflow-hidden shadow-xl">
+                    {/* Header */}
+                    <div className="px-4 py-3 bg-indigo-950/20 border-b border-indigo-900/20 flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-bold text-indigo-300 text-sm flex items-center gap-2">
+                          🧠 Spaced Revision Due
+                          <span className="text-[10px] font-normal text-indigo-400/70 bg-indigo-950/40 border border-indigo-900/40 px-2 py-0.5 rounded-full">
+                            ~{Math.ceil(displayList.length * 2)} min
+                          </span>
+                        </div>
+                        <div className="text-[10px] text-indigo-400/50 mt-0.5">
+                          {displayList.length} problem{displayList.length !== 1 ? 's' : ''}
+                          {' · '}
+                          recall intuition + pseudocode + O(n) — don&apos;t re-code
+                        </div>
+                      </div>
+                      {/* Summary badges */}
+                      <div className="flex gap-1 flex-wrap justify-end shrink-0">
+                        {overdueShown.length > 0 && (
+                          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${OVERDUE_COLOR}`}>
+                            {overdueHidden > 0
+                              ? `Overdue ${overdueShown.length} of ${overdueList.length}`
+                              : `Overdue ×${overdueShown.length}`}
+                          </span>
+                        )}
+                        {SR_STAGES.map((s, i) => groupedByStage[i]?.length > 0 ? (
+                          <span key={i} className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${SR_COLOR}`}>
+                            {s.label} ×{groupedByStage[i].length}
+                          </span>
+                        ) : null)}
+                      </div>
+                    </div>
+                    {/* Problem rows */}
+                    <div>
+                      {displayList.map(({ problem, stage, daysAgo, overdue }) => (
+                        <RevisionRow key={problem.id} p={problem} stage={stage} daysAgo={daysAgo} overdue={overdue} />
+                      ))}
+                    </div>
+                    {/* "N more overdue" separator shown between overdue and SR batches */}
+                    {overdueHidden > 0 && (
+                      <div className="px-4 py-2.5 border-t border-rose-900/20 bg-rose-950/10 flex items-center gap-2">
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${OVERDUE_COLOR}`}>+{overdueHidden} more</span>
+                        <span className="text-[10px] text-rose-400/60">
+                          Mark today’s {overdueShown.length} as recalled to reveal the next batch.
+                        </span>
+                      </div>
+                    )}
+                    {/* Method reminder */}
+                    <div className="px-4 py-2.5 border-t border-indigo-900/20 bg-indigo-950/10">
+                      <p className="text-[10px] text-indigo-400/60 leading-relaxed">
+                        <strong className="text-indigo-300/70">💡 Mental solve:</strong>
+                        {' '}look at title → state pattern &amp; intuition aloud → sketch pseudocode → state time/space complexity.
+                        {' '}Click <strong className="text-indigo-300/70">&quot;Recalled ✓&quot;</strong> to advance the review timer to the next interval.
+                      </p>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
           </div>
