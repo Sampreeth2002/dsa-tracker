@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
-import Link from 'next/link';
+import DailyStats from './components/DailyStats';
 
 type Problem = { id: string; title: string; sde: boolean; day: string };
 
@@ -550,7 +550,7 @@ export default function Tracker() {
   const [progress, setProgress] = useState<Record<string, string>>({});
   const [updatedAt, setUpdatedAt] = useState<Record<string, string>>({});
   const [reviewCount, setReviewCount] = useState<Record<string, number>>({});
-  const [view, setView] = useState<'phase' | 'day' | 'revision' | 'completed'>('day');
+  const [view, setView] = useState<'phase' | 'day' | 'revision' | 'completed' | 'stats'>('stats');
   const [activePhase, setActivePhase] = useState('PHASE 3: GRAPHS');
   const [activeDayKey, setActiveDayKey] = useState(() => {
     const n = new Date();
@@ -883,12 +883,6 @@ export default function Tracker() {
               <p className="text-[11px] text-slate-500 mt-0.5">Apr 27 – Jul 26, 2026 · 426 problems</p>
             </div>
             <div className="flex items-center gap-3 shrink-0">
-              <Link
-                href="/stats"
-                className="text-[11px] font-bold text-slate-300 bg-slate-800/60 hover:bg-slate-700/60 border border-slate-700/60 hover:border-slate-600 rounded-lg px-2.5 py-1 transition-colors"
-              >
-                📊 Stats
-              </Link>
               <div className="text-right">
                 <div className="text-3xl font-black text-emerald-400 leading-none">
                   {total > 0 ? Math.round(((solved + hinted) / total) * 100) : 0}%
@@ -968,7 +962,7 @@ export default function Tracker() {
 
         {/* ─── Tabs ───────────────────────────────────────────────── */}
         <div className="flex gap-1 p-1 bg-slate-900/60 border border-slate-800 rounded-xl">
-          {([['phase','Phase'], ['day','Calendar'], ['completed','Done'], ['revision','Revise']] as const).map(([v, label]) => (
+          {([['stats','Stats'], ['phase','Phase'], ['day','Calendar'], ['completed','Done'], ['revision','Revise']] as const).map(([v, label]) => (
             <button key={v} onClick={() => setView(v)}
               className={`relative flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
                 view === v ? 'bg-slate-700 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
@@ -987,6 +981,9 @@ export default function Tracker() {
             </button>
           ))}
         </div>
+
+        {/* ─── STATS VIEW ─────────────────────────────────────────── */}
+        {view === 'stats' && <DailyStats />}
 
         {/* ─── PHASE VIEW ─────────────────────────────────────────── */}
         {view === 'phase' && (
