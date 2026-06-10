@@ -19,15 +19,7 @@ function toLocalISODate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-function formatShort(iso: string): string {
-  const [y, m, d] = iso.split('-').map(Number);
-  const dt = new Date(y, m - 1, d);
-  const MN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  const DN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  return `${DN[dt.getDay()]} ${MN[dt.getMonth()]} ${dt.getDate()}`;
-}
-
-// Fill missing dates in range so the chart has continuous bars including zeros.
+// Fill missing dates in range so the table has continuous rows including zeros.
 function fillRange(rows: DayRow[], from: string, to: string): DayRow[] {
   const map = new Map(rows.map(r => [r.date, r]));
   const out: DayRow[] = [];
@@ -94,9 +86,6 @@ export default function StatsPage() {
     }
     return t;
   }, [rows]);
-
-  const maxCompleted = Math.max(1, ...rows.map(r => r.completed));
-  const maxRevised   = Math.max(1, ...rows.map(r => r.revised));
 
   return (
     <div className="min-h-screen bg-[#0a0a0f] text-slate-100 font-sans">
@@ -170,97 +159,93 @@ export default function StatsPage() {
         )}
 
         {!loading && !error && rows.length > 0 && (
-          <>
-            {/* Completed per day */}
-            <ChartCard
-              title="Problems completed per day"
-              subtitle="Counts each problem once per day where you marked it ✓ solved or ~ hint"
-              accent="emerald"
-              rows={rows}
-              valueOf={r => r.completed}
-              max={maxCompleted}
-            />
-
-            {/* Revised per day */}
-            <ChartCard
-              title="Problems revised per day"
-              subtitle="Counts each problem once per day you clicked Recalled ✓"
-              accent="indigo"
-              rows={rows}
-              valueOf={r => r.revised}
-              max={maxRevised}
-            />
-          </>
+          <DailyTable rows={rows} />
         )}
       </div>
     </div>
   );
 }
 
-function ChartCard({
-  title,
-  subtitle,
-  accent,
-  rows,
-  valueOf,
-  max,
-}: {
-  title: string;
-  subtitle: string;
-  accent: 'emerald' | 'indigo';
-  rows: DayRow[];
-  valueOf: (r: DayRow) => number;
-  max: number;
-}) {
-  const accentClasses =
-    accent === 'emerald'
-      ? { bar: 'bg-emerald-500/80 hover:bg-emerald-400', border: 'border-emerald-900/30', header: 'text-emerald-300' }
-      : { bar: 'bg-indigo-500/80 hover:bg-indigo-400',   border: 'border-indigo-900/30',  header: 'text-indigo-300' };
+function DailyTable({ rows }: { rows: DayRow[] }) {
+  // newest first; only days with any activity collapse onto the same view
+  const sorted = useMemo(() => [...rows].sort((a, b) => b.date.localeCompare(a.date)), [rows]);
+  const todayISO = toLocalISODate(new Date());
+
+  const fmtCell = (n: number, accent: 'emerald' | 'indigo' | 'rose') => {
+    if (n === 0) return <span className="text-slate-700">—</span>;
+    const cls =
+      accent === 'emerald' ? 'text-emerald-400' :
+      accent === 'indigo'  ? 'text-indigo-300'  : 'text-rose-400';
+    return <span className={`font-bold ${cls}`}>{n}</span>;
+  };
 
   return (
-    <div className={`bg-slate-900/80 border ${accentClasses.border} rounded-xl overflow-hidden shadow-xl`}>
+    <div className="bg-slate-900/80 border border-slate-800 rounded-xl overflow-hidden shadow-xl">
       <div className="px-4 py-3 bg-slate-800/30 border-b border-slate-800">
-        <div className={`font-bold text-sm ${accentClasses.header}`}>{title}</div>
-        <div className="text-[10px] text-slate-500 mt-0.5">{subtitle}</div>
+        <div className="font-bold text-sm text-slate-100">Daily breakdown</div>
+        <div className="text-[10px] text-slate-500 mt-0.5">
+          {sorted.length} days · newest first
+        </div>
       </div>
-
-      {/* Bar chart */}
-      <div className="p-4">
-        <div className="flex items-end gap-1 h-40">
-          {rows.map(r => {
-            const v = valueOf(r);
-            const h = max > 0 ? (v / max) * 100 : 0;
-            return (
-              <div key={r.date} className="flex-1 min-w-0 flex flex-col items-center justify-end gap-1 group">
-                <span className="text-[9px] text-slate-500 group-hover:text-slate-200 font-mono leading-none h-3">
-                  {v > 0 ? v : ''}
-                </span>
-                <div
-                  title={`${formatShort(r.date)} · ${v}`}
-                  className={`w-full rounded-t-sm transition-colors ${v > 0 ? accentClasses.bar : 'bg-slate-800/40'}`}
-                  style={{ height: `${Math.max(h, v > 0 ? 4 : 2)}%` }}
-                />
-              </div>
-            );
-          })}
-        </div>
-
-        {/* X-axis labels — sparse for readability */}
-        <div className="flex gap-1 mt-2">
-          {rows.map((r, i) => {
-            const total = rows.length;
-            const step = Math.max(1, Math.ceil(total / 10));
-            const show = i === 0 || i === total - 1 || i % step === 0;
-            const [, m, d] = r.date.split('-');
-            return (
-              <div key={r.date} className="flex-1 min-w-0 text-center">
-                <span className="text-[8px] text-slate-600 font-mono">
-                  {show ? `${Number(m)}/${Number(d)}` : ''}
-                </span>
-              </div>
-            );
-          })}
-        </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead className="text-[10px] uppercase tracking-wide text-slate-500 bg-slate-800/20">
+            <tr>
+              <th className="text-left  px-4 py-2 font-semibold">Date</th>
+              <th className="text-left  px-2 py-2 font-semibold">Day</th>
+              <th className="text-right px-3 py-2 font-semibold text-emerald-400/80">Completed</th>
+              <th className="text-right px-3 py-2 font-semibold text-indigo-300/80">Revised</th>
+              <th className="text-right px-3 py-2 font-semibold text-rose-400/80">Flagged</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map(r => {
+              const [y, m, d] = r.date.split('-').map(Number);
+              const dt = new Date(y, m - 1, d);
+              const DN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+              const isToday = r.date === todayISO;
+              const isWeekend = dt.getDay() === 0 || dt.getDay() === 6;
+              const empty = r.completed === 0 && r.revised === 0 && r.flagged === 0;
+              return (
+                <tr
+                  key={r.date}
+                  className={`border-t border-slate-800/40 transition-colors ${
+                    isToday ? 'bg-emerald-950/20' : empty ? 'opacity-50 hover:opacity-100' : 'hover:bg-slate-800/20'
+                  }`}
+                >
+                  <td className="px-4 py-2 font-mono text-slate-300 whitespace-nowrap">
+                    {r.date}
+                    {isToday && (
+                      <span className="ml-2 text-[9px] font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-900/40 px-1.5 py-0.5 rounded-full">
+                        TODAY
+                      </span>
+                    )}
+                  </td>
+                  <td className={`px-2 py-2 text-xs ${isWeekend ? 'text-amber-500/80' : 'text-slate-500'}`}>
+                    {DN[dt.getDay()]}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtCell(r.completed, 'emerald')}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtCell(r.revised, 'indigo')}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{fmtCell(r.flagged, 'rose')}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+          <tfoot className="bg-slate-800/30 border-t border-slate-700/40 text-xs font-bold">
+            <tr>
+              <td className="px-4 py-2 text-slate-400" colSpan={2}>Total</td>
+              <td className="px-3 py-2 text-right text-emerald-400 tabular-nums">
+                {sorted.reduce((s, r) => s + r.completed, 0)}
+              </td>
+              <td className="px-3 py-2 text-right text-indigo-300 tabular-nums">
+                {sorted.reduce((s, r) => s + r.revised, 0)}
+              </td>
+              <td className="px-3 py-2 text-right text-rose-400 tabular-nums">
+                {sorted.reduce((s, r) => s + r.flagged, 0)}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
       </div>
     </div>
   );
