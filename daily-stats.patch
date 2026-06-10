@@ -1,0 +1,516 @@
+diff --git a/app/page.tsx b/app/page.tsx
+index 040de8b..f92d518 100644
+--- a/app/page.tsx
++++ b/app/page.tsx
+@@ -1,8 +1,25 @@
+ 'use client';
+ import { useState, useEffect, useMemo } from 'react';
++import Link from 'next/link';
+ 
+ type Problem = { id: string; title: string; sde: boolean; day: string };
+ 
++// Best-effort fire-and-forget event log; failures don't block UI.
++function logEvent(problemId: string, eventType: string, eventDate?: string) {
++  fetch('/api/events', {
++    method: 'POST',
++    headers: { 'Content-Type': 'application/json' },
++    body: JSON.stringify({ problemId, eventType, eventDate }),
++  }).catch(() => {});
++}
++
++function toLocalISODate(d: Date): string {
++  const y = d.getFullYear();
++  const m = String(d.getMonth() + 1).padStart(2, '0');
++  const day = String(d.getDate()).padStart(2, '0');
++  return `${y}-${m}-${day}`;
++}
++
+ const revisionNotes: Record<string, string> = {
+   "Fri, Jun 5": "🔁 Revision (1h): DP Intro — Fibonacci, Climbing Stairs, Frog Jump (re-derive recurrences)",
+   "Sat, Jun 6": "🔁 Revision (3h): Full DP recap — House Robber, Grid DP, Subset Sum, 0/1 Knapsack, Coin Change (re-solve 3 weakest)",
+@@ -527,6 +544,8 @@ const dataset: Record<string, Problem[]> = {
+   ]
+ };
+ 
++type DailyCount = { date: string; completed: number; revised: number };
++
+ export default function Tracker() {
+   const [progress, setProgress] = useState<Record<string, string>>({});
+   const [updatedAt, setUpdatedAt] = useState<Record<string, string>>({});
+@@ -539,6 +558,8 @@ export default function Tracker() {
+     const MN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+     return `${DN[n.getDay()]}, ${MN[n.getMonth()]} ${n.getDate()}`;
+   });
++  const [last7, setLast7] = useState<DailyCount[]>([]);
++  const [eventsRefresh, setEventsRefresh] = useState(0);
+ 
+   useEffect(() => {
+     fetch('/api/progress')
+@@ -555,6 +576,31 @@ export default function Tracker() {
+       .catch(() => {});
+   }, []);
+ 
++  // Fetch last 7 days of completed/revised counts; re-runs after each toggle/recall.
++  useEffect(() => {
++    const end = new Date();
++    const start = new Date();
++    start.setDate(end.getDate() - 6);
++    const from = toLocalISODate(start);
++    const to   = toLocalISODate(end);
++    fetch(`/api/events?from=${from}&to=${to}`)
++      .then(r => r.json())
++      .then(data => {
++        const map = new Map<string, DailyCount>(
++          (data.days || []).map((d: DailyCount) => [d.date, d])
++        );
++        const out: DailyCount[] = [];
++        for (let i = 6; i >= 0; i--) {
++          const d = new Date();
++          d.setDate(end.getDate() - i);
++          const iso = toLocalISODate(d);
++          out.push(map.get(iso) ?? { date: iso, completed: 0, revised: 0 });
++        }
++        setLast7(out);
++      })
++      .catch(() => {});
++  }, [eventsRefresh]);
++
+   const toggle = async (id: string, target: string) => {
+     const cur = progress[id] || 'unsolved';
+     const next = cur === target ? 'unsolved' : target;
+@@ -570,6 +616,8 @@ export default function Tracker() {
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({ problemId: id, status: next, reviewCount: 0 }),
+     });
++    logEvent(id, next, toLocalISODate(new Date()));
++    setEventsRefresh(n => n + 1);
+   };
+ 
+   const allProblems = useMemo(() => Object.values(dataset).flat() as Problem[], []);
+@@ -728,6 +776,8 @@ export default function Tracker() {
+       headers: { 'Content-Type': 'application/json' },
+       body: JSON.stringify({ problemId: id, status: s, updatedAt: isoDate, reviewCount: nextStage }),
+     });
++    logEvent(id, 'reviewed', toLocalISODate(recallDate));
++    setEventsRefresh(n => n + 1);
+   };
+ 
+   // ── RevisionRow component ─────────────────────────────────────────────
+@@ -832,11 +882,19 @@ export default function Tracker() {
+               <h1 className="text-lg font-black text-white tracking-tight">Striver A2Z DSA</h1>
+               <p className="text-[11px] text-slate-500 mt-0.5">Apr 27 – Jul 26, 2026 · 426 problems</p>
+             </div>
+-            <div className="text-right shrink-0">
+-              <div className="text-3xl font-black text-emerald-400 leading-none">
+-                {total > 0 ? Math.round(((solved + hinted) / total) * 100) : 0}%
++            <div className="flex items-center gap-3 shrink-0">
++              <Link
++                href="/stats"
++                className="text-[11px] font-bold text-slate-300 bg-slate-800/60 hover:bg-slate-700/60 border border-slate-700/60 hover:border-slate-600 rounded-lg px-2.5 py-1 transition-colors"
++              >
++                📊 Stats
++              </Link>
++              <div className="text-right">
++                <div className="text-3xl font-black text-emerald-400 leading-none">
++                  {total > 0 ? Math.round(((solved + hinted) / total) * 100) : 0}%
++                </div>
++                <div className="text-[10px] text-slate-600 mt-0.5">complete</div>
+               </div>
+-              <div className="text-[10px] text-slate-600 mt-0.5">complete</div>
+             </div>
+           </div>
+           {/* Segmented progress bar */}
+@@ -860,6 +918,52 @@ export default function Tracker() {
+               </div>
+             ))}
+           </div>
++
++          {/* Last 7 days mini-chart */}
++          {last7.length > 0 && (() => {
++            const max = Math.max(1, ...last7.map(d => d.completed));
++            const total7 = last7.reduce((sum, d) => sum + d.completed, 0);
++            const DN = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
++            return (
++              <div className="mt-3 pt-3 border-t border-slate-800/60">
++                <div className="flex items-baseline justify-between mb-2">
++                  <span className="text-[10px] text-slate-500 uppercase font-semibold tracking-wide">
++                    Last 7 days · completed
++                  </span>
++                  <span className="text-[10px] text-slate-500">
++                    <strong className="text-emerald-400 font-black">{total7}</strong> total
++                  </span>
++                </div>
++                <div className="flex items-end gap-1.5 h-16">
++                  {last7.map((d, i) => {
++                    const isToday = i === last7.length - 1;
++                    const h = (d.completed / max) * 100;
++                    const [, mo, da] = d.date.split('-');
++                    const dt = new Date(Number(d.date.slice(0, 4)), Number(mo) - 1, Number(da));
++                    return (
++                      <div key={d.date} className="flex-1 flex flex-col items-center justify-end gap-1 min-w-0 group">
++                        <span className="text-[9px] font-mono text-slate-400 group-hover:text-slate-200 leading-none h-3">
++                          {d.completed > 0 ? d.completed : ''}
++                        </span>
++                        <div
++                          title={`${d.date} · ${d.completed} completed`}
++                          className={`w-full rounded-t-sm transition-colors ${
++                            d.completed > 0
++                              ? (isToday ? 'bg-emerald-400' : 'bg-emerald-500/70 hover:bg-emerald-400')
++                              : 'bg-slate-800/60'
++                          }`}
++                          style={{ height: `${Math.max(h, d.completed > 0 ? 6 : 3)}%` }}
++                        />
++                        <span className={`text-[9px] font-mono leading-none ${isToday ? 'text-emerald-300 font-bold' : 'text-slate-600'}`}>
++                          {DN[dt.getDay()][0]}
++                        </span>
++                      </div>
++                    );
++                  })}
++                </div>
++              </div>
++            );
++          })()}
+         </div>
+ 
+         {/* ─── Tabs ───────────────────────────────────────────────── */}
+diff --git a/app/api/events/route.js b/app/api/events/route.js
+new file mode 100644
+index 0000000..7f11b4f
+--- /dev/null
++++ b/app/api/events/route.js
+@@ -0,0 +1,62 @@
++import { createClient } from '@supabase/supabase-js';
++import { NextResponse } from 'next/server';
++
++const supabase = createClient(
++  process.env.NEXT_PUBLIC_SUPABASE_URL,
++  process.env.SUPABASE_SERVICE_ROLE_KEY
++);
++
++// GET /api/events?from=YYYY-MM-DD&to=YYYY-MM-DD
++// Returns rows aggregated by event_date with:
++//   - completed: distinct problems marked solved or hint that day
++//   - revised:   distinct problems where a 'reviewed' event was logged that day
++//   - flagged:   distinct problems marked revisit that day
++export async function GET(request) {
++  const { searchParams } = new URL(request.url);
++  const from = searchParams.get('from');
++  const to   = searchParams.get('to');
++
++  let q = supabase.from('problem_events').select('problem_id,event_type,event_date');
++  if (from) q = q.gte('event_date', from);
++  if (to)   q = q.lte('event_date', to);
++
++  const { data, error } = await q;
++  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
++
++  // date -> { completed:Set, revised:Set, flagged:Set }
++  const byDate = {};
++  for (const row of data) {
++    const d = row.event_date;
++    if (!byDate[d]) byDate[d] = { completed: new Set(), revised: new Set(), flagged: new Set() };
++    if (row.event_type === 'solved' || row.event_type === 'hint') byDate[d].completed.add(row.problem_id);
++    else if (row.event_type === 'reviewed')                       byDate[d].revised.add(row.problem_id);
++    else if (row.event_type === 'revisit')                        byDate[d].flagged.add(row.problem_id);
++  }
++
++  const days = Object.entries(byDate)
++    .map(([date, sets]) => ({
++      date,
++      completed: sets.completed.size,
++      revised:   sets.revised.size,
++      flagged:   sets.flagged.size,
++    }))
++    .sort((a, b) => a.date.localeCompare(b.date));
++
++  return NextResponse.json({ days });
++}
++
++// POST /api/events  body: { problemId, eventType, eventDate? }
++// eventDate is YYYY-MM-DD; defaults to today (server-side UTC date).
++export async function POST(request) {
++  const { problemId, eventType, eventDate } = await request.json();
++  if (!problemId || !eventType) {
++    return NextResponse.json({ error: 'problemId and eventType required' }, { status: 400 });
++  }
++  const date = eventDate || new Date().toISOString().slice(0, 10);
++  const { data, error } = await supabase
++    .from('problem_events')
++    .insert({ problem_id: problemId, event_type: eventType, event_date: date })
++    .select();
++  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
++  return NextResponse.json({ success: true, data });
++}
+diff --git a/app/stats/page.tsx b/app/stats/page.tsx
+new file mode 100644
+index 0000000..d44d942
+--- /dev/null
++++ b/app/stats/page.tsx
+@@ -0,0 +1,267 @@
++'use client';
++import { useEffect, useMemo, useState } from 'react';
++import Link from 'next/link';
++
++type DayRow = { date: string; completed: number; revised: number; flagged: number };
++
++const RANGE_OPTIONS = [
++  { label: '7d',  days: 7  },
++  { label: '14d', days: 14 },
++  { label: '30d', days: 30 },
++  { label: '90d', days: 90 },
++  { label: 'All', days: 0  },
++];
++
++function toLocalISODate(d: Date): string {
++  const y = d.getFullYear();
++  const m = String(d.getMonth() + 1).padStart(2, '0');
++  const day = String(d.getDate()).padStart(2, '0');
++  return `${y}-${m}-${day}`;
++}
++
++function formatShort(iso: string): string {
++  const [y, m, d] = iso.split('-').map(Number);
++  const dt = new Date(y, m - 1, d);
++  const MN = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
++  const DN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
++  return `${DN[dt.getDay()]} ${MN[dt.getMonth()]} ${dt.getDate()}`;
++}
++
++// Fill missing dates in range so the chart has continuous bars including zeros.
++function fillRange(rows: DayRow[], from: string, to: string): DayRow[] {
++  const map = new Map(rows.map(r => [r.date, r]));
++  const out: DayRow[] = [];
++  const [fy, fm, fd] = from.split('-').map(Number);
++  const [ty, tm, td] = to.split('-').map(Number);
++  const start = new Date(fy, fm - 1, fd);
++  const end   = new Date(ty, tm - 1, td);
++  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
++    const iso = toLocalISODate(d);
++    out.push(map.get(iso) ?? { date: iso, completed: 0, revised: 0, flagged: 0 });
++  }
++  return out;
++}
++
++export default function StatsPage() {
++  const [rows, setRows] = useState<DayRow[]>([]);
++  const [loading, setLoading] = useState(true);
++  const [error, setError] = useState<string | null>(null);
++  const [rangeDays, setRangeDays] = useState(30);
++
++  useEffect(() => {
++    setLoading(true);
++    setError(null);
++    let from: string | undefined;
++    let to: string | undefined;
++    if (rangeDays > 0) {
++      const end = new Date();
++      const start = new Date();
++      start.setDate(end.getDate() - (rangeDays - 1));
++      from = toLocalISODate(start);
++      to   = toLocalISODate(end);
++    }
++    const qs = new URLSearchParams();
++    if (from) qs.set('from', from);
++    if (to)   qs.set('to', to);
++    fetch(`/api/events?${qs.toString()}`)
++      .then(r => r.json())
++      .then(data => {
++        if (data.error) {
++          setError(data.error);
++          setRows([]);
++        } else {
++          const raw: DayRow[] = data.days || [];
++          if (from && to) {
++            setRows(fillRange(raw, from, to));
++          } else if (raw.length > 0) {
++            setRows(fillRange(raw, raw[0].date, raw[raw.length - 1].date));
++          } else {
++            setRows([]);
++          }
++        }
++      })
++      .catch(e => setError(String(e)))
++      .finally(() => setLoading(false));
++  }, [rangeDays]);
++
++  const totals = useMemo(() => {
++    const t = { completed: 0, revised: 0, flagged: 0, activeDays: 0 };
++    for (const r of rows) {
++      t.completed += r.completed;
++      t.revised   += r.revised;
++      t.flagged   += r.flagged;
++      if (r.completed > 0 || r.revised > 0) t.activeDays++;
++    }
++    return t;
++  }, [rows]);
++
++  const maxCompleted = Math.max(1, ...rows.map(r => r.completed));
++  const maxRevised   = Math.max(1, ...rows.map(r => r.revised));
++
++  return (
++    <div className="min-h-screen bg-[#0a0a0f] text-slate-100 font-sans">
++      <div className="max-w-4xl mx-auto px-4 py-6 space-y-4">
++
++        {/* Header */}
++        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 shadow-2xl">
++          <div className="flex items-start justify-between gap-4 mb-4">
++            <div>
++              <h1 className="text-lg font-black text-white tracking-tight">Daily Activity</h1>
++              <p className="text-[11px] text-slate-500 mt-0.5">Problems completed and revised per day</p>
++            </div>
++            <Link
++              href="/"
++              className="text-[11px] font-bold text-slate-300 bg-slate-800/60 hover:bg-slate-700/60 border border-slate-700/60 hover:border-slate-600 rounded-lg px-2.5 py-1 transition-colors shrink-0"
++            >
++              ← Back
++            </Link>
++          </div>
++
++          {/* Range tabs */}
++          <div className="flex gap-1 p-1 bg-slate-900/60 border border-slate-800 rounded-xl mb-4">
++            {RANGE_OPTIONS.map(opt => (
++              <button
++                key={opt.label}
++                onClick={() => setRangeDays(opt.days)}
++                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${
++                  rangeDays === opt.days ? 'bg-slate-700 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'
++                }`}
++              >
++                {opt.label}
++              </button>
++            ))}
++          </div>
++
++          {/* Stat cards */}
++          <div className="grid grid-cols-4 gap-2 text-center text-xs">
++            {[
++              { label: 'Completed', val: totals.completed, cls: 'text-emerald-400', bg: 'bg-emerald-950/40 border border-emerald-900/30' },
++              { label: 'Revised',   val: totals.revised,   cls: 'text-indigo-300',  bg: 'bg-indigo-950/40 border border-indigo-900/30' },
++              { label: 'Flagged',   val: totals.flagged,   cls: 'text-rose-400',    bg: 'bg-rose-950/30 border border-rose-900/20' },
++              { label: 'Days',      val: totals.activeDays, cls: 'text-slate-300',  bg: 'bg-slate-800/60' },
++            ].map(({ label, val, cls, bg }) => (
++              <div key={label} className={`${bg} rounded-xl p-2.5`}>
++                <div className={`text-xl font-black ${cls}`}>{val}</div>
++                <div className="text-[10px] text-slate-500 uppercase font-semibold">{label}</div>
++              </div>
++            ))}
++          </div>
++        </div>
++
++        {loading && (
++          <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-10 text-center text-slate-500 text-sm">
++            Loading…
++          </div>
++        )}
++
++        {error && (
++          <div className="bg-rose-950/40 border border-rose-900/40 rounded-xl p-4 text-rose-300 text-xs">
++            {error}
++          </div>
++        )}
++
++        {!loading && !error && rows.length === 0 && (
++          <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-14 text-center">
++            <p className="text-slate-400 font-medium">No activity recorded yet.</p>
++            <p className="text-slate-600 text-xs mt-2">
++              Mark a problem solved or click <strong className="text-slate-400">Recalled ✓</strong> on the Calendar tab to start logging events.
++            </p>
++          </div>
++        )}
++
++        {!loading && !error && rows.length > 0 && (
++          <>
++            {/* Completed per day */}
++            <ChartCard
++              title="Problems completed per day"
++              subtitle="Counts each problem once per day where you marked it ✓ solved or ~ hint"
++              accent="emerald"
++              rows={rows}
++              valueOf={r => r.completed}
++              max={maxCompleted}
++            />
++
++            {/* Revised per day */}
++            <ChartCard
++              title="Problems revised per day"
++              subtitle="Counts each problem once per day you clicked Recalled ✓"
++              accent="indigo"
++              rows={rows}
++              valueOf={r => r.revised}
++              max={maxRevised}
++            />
++          </>
++        )}
++      </div>
++    </div>
++  );
++}
++
++function ChartCard({
++  title,
++  subtitle,
++  accent,
++  rows,
++  valueOf,
++  max,
++}: {
++  title: string;
++  subtitle: string;
++  accent: 'emerald' | 'indigo';
++  rows: DayRow[];
++  valueOf: (r: DayRow) => number;
++  max: number;
++}) {
++  const accentClasses =
++    accent === 'emerald'
++      ? { bar: 'bg-emerald-500/80 hover:bg-emerald-400', border: 'border-emerald-900/30', header: 'text-emerald-300' }
++      : { bar: 'bg-indigo-500/80 hover:bg-indigo-400',   border: 'border-indigo-900/30',  header: 'text-indigo-300' };
++
++  return (
++    <div className={`bg-slate-900/80 border ${accentClasses.border} rounded-xl overflow-hidden shadow-xl`}>
++      <div className="px-4 py-3 bg-slate-800/30 border-b border-slate-800">
++        <div className={`font-bold text-sm ${accentClasses.header}`}>{title}</div>
++        <div className="text-[10px] text-slate-500 mt-0.5">{subtitle}</div>
++      </div>
++
++      {/* Bar chart */}
++      <div className="p-4">
++        <div className="flex items-end gap-1 h-40">
++          {rows.map(r => {
++            const v = valueOf(r);
++            const h = max > 0 ? (v / max) * 100 : 0;
++            return (
++              <div key={r.date} className="flex-1 min-w-0 flex flex-col items-center justify-end gap-1 group">
++                <span className="text-[9px] text-slate-500 group-hover:text-slate-200 font-mono leading-none h-3">
++                  {v > 0 ? v : ''}
++                </span>
++                <div
++                  title={`${formatShort(r.date)} · ${v}`}
++                  className={`w-full rounded-t-sm transition-colors ${v > 0 ? accentClasses.bar : 'bg-slate-800/40'}`}
++                  style={{ height: `${Math.max(h, v > 0 ? 4 : 2)}%` }}
++                />
++              </div>
++            );
++          })}
++        </div>
++
++        {/* X-axis labels — sparse for readability */}
++        <div className="flex gap-1 mt-2">
++          {rows.map((r, i) => {
++            const total = rows.length;
++            const step = Math.max(1, Math.ceil(total / 10));
++            const show = i === 0 || i === total - 1 || i % step === 0;
++            const [, m, d] = r.date.split('-');
++            return (
++              <div key={r.date} className="flex-1 min-w-0 text-center">
++                <span className="text-[8px] text-slate-600 font-mono">
++                  {show ? `${Number(m)}/${Number(d)}` : ''}
++                </span>
++              </div>
++            );
++          })}
++        </div>
++      </div>
++    </div>
++  );
++}
