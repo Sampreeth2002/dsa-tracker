@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
-import { PROBLEM_SCHEDULE } from '../lib/schedule';
+import { PROBLEM_SCHEDULE } from '../lib/dataset';
 
 type DayRow = { date: string; completed: number; revised: number; flagged: number };
 
